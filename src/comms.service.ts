@@ -1,26 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { NextDeliveryMessage, User } from './interfaces/interfaces';
 import * as fs from 'fs';
 import * as path from 'path';
-
-export interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  cats: Cat[];
-}
-
-export interface Cat {
-  name: string;
-  subscriptionActive: boolean;
-  breed: string;
-  pouchSize: string;
-}
+import { PouchCost } from './enums/enums';
+import { formatCatNames } from './utils';
 
 @Injectable()
 export class CommsService {
-  getNextDelivery(userId: string): string {
-    const userDataJsonPath = path.join(__dirname, '../../data.json');
+  getNextDeliveryMessage(userId: string): NextDeliveryMessage {
+    const userDataJsonPath = path.join(__dirname, '../data.json');
     const users = JSON.parse(
       fs.readFileSync(userDataJsonPath, 'utf8'),
     ) as User[];
@@ -28,9 +16,27 @@ export class CommsService {
     const user: User | undefined = users.find((user) => user.id === userId);
 
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundException('User not found');
     }
 
-    return 'This is the next delivery';
+    const activeCats = user.cats.filter((cat) => cat.subscriptionActive);
+
+    if (activeCats.length === 0) {
+      throw new NotFoundException('No active cat subscriptions found');
+    }
+
+    const catNames = activeCats.map((cat) => cat.name);
+    const formattedCatNames = formatCatNames(catNames);
+    const totalPrice = activeCats.reduce(
+      (total, cat) => total + PouchCost[cat.pouchSize],
+      0,
+    );
+
+    return {
+      title: `Your next delivery for ${formattedCatNames}`,
+      message: `Hey ${user.firstName}! In two days' time, we'll be charging you for your next order for ${formattedCatNames}'s fresh food.`,
+      totalPrice: totalPrice,
+      freeGift: totalPrice > 120 ? true : false,
+    };
   }
 }
